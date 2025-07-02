@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduling Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #0a0a0a;
+            color: #ffffff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: #1a1a1a;
+            padding: 20px;
+            text-align: center;
+            border-bottom: 3px solid #ffa500;
+            box-shadow: 0 4px 10px rgba(255, 165, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 3em;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: #ffa500;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px rgba(255, 165, 0, 0.5);
+        }
+
+        .datetime {
+            font-size: 1.2em;
+            color: #cccccc;
+            margin-top: 10px;
+            letter-spacing: 1px;
+        }
+
+        .sync-status {
+            font-size: 0.9em;
+            color: #00ff00;
+            margin-top: 5px;
+        }
+
+        .sync-status.error {
+            color: #ff4444;
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .dashboard {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: linear-gradient(to bottom, #0a0a0a, #1a1a1a);
+        }
+
+        .refresh-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #ffa500;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(255, 165, 0, 0.5);
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+
+        .refresh-button:hover {
+            background-color: #ff8c00;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(255, 165, 0, 0.7);
+        }
+
+        .refresh-button:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background-color: rgba(26, 26, 26, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .schedule-table th {
+            background-color: #2a2a2a;
+            padding: 20px;
+            text-align: left;
+            font-size: 1.3em;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #ffa500;
+            border-bottom: 3px solid #ffa500;
+        }
+
+        .schedule-table td {
+            padding: 20px;
+            font-size: 1.2em;
+            border-bottom: 1px solid #333;
+            transition: all 0.3s;
+        }
+
+        .schedule-table tr {
+            transition: all 0.3s;
+        }
+
+        .schedule-table tr:hover {
+            background-color: rgba(255, 165, 0, 0.1);
+            transform: translateX(5px);
+        }
+
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: inline-block;
+            min-width: 120px;
+            text-align: center;
+        }
+
+        .status.scheduled {
+            background-color: #00ff00;
+            color: #000;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+        }
+
+        .status.rescheduling {
+            background-color: #ffff00;
+            color: #000;
+            box-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+        }
+
+        .status.pending {
+            background-color: #ff4444;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+        }
+
+        .status.in-progress {
+            background-color: #4444ff;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(68, 68, 255, 0.5);
+        }
+
+        .location {
+            color: #aaaaaa;
+            font-weight: bold;
+        }
+
+        .name {
+            color: #ffffff;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .time {
+            color: #ffa500;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-size: 1.5em;
+            letter-spacing: 1px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #ffa500;
+            font-size: 1.5em;
+        }
+
+        /* Animations */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .updating {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 165, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #ffa500;
+            animation: spin 1s ease-in-out infinite;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+    <div class="header">
+        <h1>Scheduling Terminal</h1>
+        <div class="datetime" id="datetime"></div>
+        <div class="sync-status" id="syncStatus"></div>
+    </div>
+
+    <div class="main-container">
+        <div class="dashboard">
+            <div class="loading" id="loading">
+                <div class="spinner"></div> Loading appointments...
+            </div>
+            <table class="schedule-table" id="scheduleTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Date & Time</th>
+                        <th>Location</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleBody">
+                    <!-- Data will be populated here -->
+                </tbody>
+            </table>
+            <div class="no-data" id="noData" style="display: none;">
+                No appointments found in the spreadsheet.
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-button" onclick="fetchSheetData()" id="refreshBtn">↻ Refresh</button>
+
+    <script>
+        // Configuration - Your published CSV URL
+        const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTrl2gZKGIyZcfKs9kLRzwfMBGywvJT-eyuJAlM0mcBabJT0BinOvmhx0V9xUrHoReYM7jMzAfgZ9EJ/pub?output=csv';
+        
+        let appointments = [];
+        let lastUpdate = null;
+
+        function updateDateTime() {
+            const now = new Date();
+            const options = { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            document.getElementById('datetime').textContent = now.toLocaleDateString('en-US', options);
+        }
+
+        function updateSyncStatus(message, isError = false) {
+            const status = document.getElementById('syncStatus');
+            status.textContent = message;
+            status.className = isError ? 'sync-status error' : 'sync-status';
+        }
+
+        function parseDateTime(dateTimeStr) {
+            if (!dateTimeStr) return { date: '', time: '' };
+            
+            try {
+                // Handle various date formats
+                const dateObj = new Date(dateTimeStr);
+                if (isNaN(dateObj.getTime())) return { date: '', time: '' };
+                
+                const date = dateObj.toISOString().split('T')[0];
+                const time = dateObj.toTimeString().slice(0, 5);
+                return { date, time };
+            } catch (e) {
+                return { date: '', time: '' };
+            }
+        }
+
+        function formatDateTime(date, time) {
+            if (!date) return 'TBD';
+            try {
+                const dateObj = new Date(date + 'T' + (time || '00:00'));
+                const options = { 
+                    month: 'short', 
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: time ? '2-digit' : undefined,
+                    minute: time ? '2-digit' : undefined
+                };
+                return dateObj.toLocaleDateString('en-US', options);
+            } catch (e) {
+                return 'TBD';
+            }
+        }
+
+        function normalizeStatus(status) {
+            if (!status) return 'pending';
+            const normalized = status.toLowerCase().trim();
+            
+            // Map various status strings to our standard statuses
+            if (normalized.includes('scheduled')) return 'scheduled';
+            if (normalized.includes('progress')) return 'in-progress';
+            if (normalized.includes('reschedul')) return 'rescheduling';
+            if (normalized.includes('pending')) return 'pending';
+            
+            // Default mapping for sheet statuses
+            switch(normalized) {
+                case 'in progress': return 'in-progress';
+                case 'scheduled': return 'scheduled';
+                case 'rescheduling': return 'rescheduling';
+                default: return 'pending';
+            }
+        }
+
+        async function fetchSheetData() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.disabled = true;
+            
+            try {
+                updateSyncStatus('Syncing with Google Sheets...');
+                
+                // Use CORS proxy for local testing, direct URL for production
+                let fetchUrl = SHEET_CSV_URL;
+                if (window.location.protocol === 'file:') {
+                    // Running locally - use CORS proxy
+                    fetchUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(SHEET_CSV_URL)}`;
+                }
+                
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const csvText = await response.text();
+                console.log('Raw CSV:', csvText.substring(0, 500)); // Debug: see first 500 chars
+                
+                // Parse CSV using Papa Parse
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        console.log('CSV Data:', results.data); // Debug: see what we're getting
+                        console.log('Headers:', results.meta.fields); // Debug: see column names
+                        
+                        appointments = [];
+                        
+                        results.data.forEach(row => {
+                            // Debug: log first row to see all keys
+                            if (appointments.length === 0) {
+                                console.log('First row keys:', Object.keys(row));
+                                console.log('First row data:', row);
+                            }
+                            
+                            // More flexible column matching - check all possible variations
+                            let name = '';
+                            let status = '';
+                            let scheduledDate = '';
+                            let location = '';
+                            let notes = '';
+                            
+                            // Find name column
+                            for (const key of Object.keys(row)) {
+                                const lowerKey = key.toLowerCase().trim();
+                                if (lowerKey.includes('name') && !name) {
+                                    name = row[key] || '';
+                                } else if (lowerKey.includes('status') && !status) {
+                                    status = row[key] || '';
+                                } else if ((lowerKey.includes('date') || lowerKey.includes('scheduled')) && !scheduledDate) {
+                                    scheduledDate = row[key] || '';
+                                } else if (lowerKey.includes('location') && !location) {
+                                    location = row[key] || '';
+                                } else if (lowerKey.includes('note') && !notes) {
+                                    notes = row[key] || '';
+                                }
+                            }
+                            
+                            // Skip if no name found
+                            if (!name || !name.trim()) return;
+                            
+                            const dateTime = parseDateTime(scheduledDate);
+                            
+                            appointments.push({
+                                name: name.trim(),
+                                status: normalizeStatus(status),
+                                date: dateTime.date,
+                                time: dateTime.time,
+                                location: location.trim(),
+                                notes: notes.trim()
+                            });
+                        });
+                        
+                        console.log('Parsed appointments:', appointments); // Debug: see final data
+                        
+                        if (appointments.length === 0) {
+                            console.log('No appointments found. Check if sheet has data and correct column names.');
+                            appointments = [{
+                                name: "No Appointments Found",
+                                status: "pending",
+                                date: "",
+                                time: "",
+                                location: "Check sheet",
+                                notes: "Ensure sheet has: Name, Status, Scheduled Date, Location, Notes columns"
+                            }];
+                        }
+                        
+                        lastUpdate = new Date();
+                        updateSyncStatus(`Last synced: ${lastUpdate.toLocaleTimeString()}`);
+                        renderTable();
+                    },
+                    error: function(error) {
+                        console.error('Papa Parse error:', error);
+                        updateSyncStatus('Error parsing CSV data', true);
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error fetching sheet data:', error);
+                updateSyncStatus(`Error: ${error.message}`, true);
+                
+                // Show more detailed error info
+                appointments = [
+                    {
+                        name: "Connection Error",
+                        status: "pending",
+                        date: "",
+                        time: "",
+                        location: "Local file issue",
+                        notes: "Upload to GitHub Pages for automatic sync, or use a local web server"
+                    }
+                ];
+                renderTable();
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('scheduleBody');
+            const loading = document.getElementById('loading');
+            const table = document.getElementById('scheduleTable');
+            const noData = document.getElementById('noData');
+            
+            loading.style.display = 'none';
+            
+            tbody.innerHTML = '';
+
+            if (appointments.length === 0) {
+                table.style.display = 'none';
+                noData.style.display = 'block';
+                return;
+            }
+
+            table.style.display = 'table';
+            noData.style.display = 'none';
+
+            // Sort appointments: scheduled first (by date), then others
+            const sortedAppointments = [...appointments].sort((a, b) => {
+                if (a.status === 'scheduled' && b.status !== 'scheduled') return -1;
+                if (a.status !== 'scheduled' && b.status === 'scheduled') return 1;
+                if (a.date && b.date) {
+                    const dateA = new Date(a.date + 'T' + (a.time || '00:00'));
+                    const dateB = new Date(b.date + 'T' + (b.time || '00:00'));
+                    return dateA - dateB;
+                }
+                return 0;
+            });
+
+            sortedAppointments.forEach(apt => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="name">${apt.name}</td>
+                    <td><span class="status ${apt.status}">${apt.status.replace('-', ' ')}</span></td>
+                    <td class="time">${formatDateTime(apt.date, apt.time)}</td>
+                    <td class="location">${apt.location || 'TBD'}</td>
+                    <td>${apt.notes || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Add update animation
+            tbody.classList.add('updating');
+            setTimeout(() => tbody.classList.remove('updating'), 1000);
+        }
+
+        // Initialize
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+
+        // Initial fetch
+        fetchSheetData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(fetchSheetData, 30000);
+    </script>
+</body>
+</html>
