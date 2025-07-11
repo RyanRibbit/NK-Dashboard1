@@ -74,6 +74,7 @@
         .main-container {
             flex: 1;
             display: flex;
+            flex-direction: column;
             overflow: hidden;
         }
 
@@ -82,6 +83,76 @@
             padding: 20px;
             overflow-y: auto;
             background: linear-gradient(to bottom, #0a0a0a, #1a1a1a);
+        }
+
+        .dashboard h2 {
+            color: #ffa500;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dashboard h2::before {
+            content: "📋";
+            font-size: 1.2em;
+        }
+
+        .past-section {
+            background-color: rgba(40, 40, 40, 0.5);
+            margin: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #555;
+        }
+
+        .past-section h2 {
+            color: #888;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .past-section h2:hover {
+            color: #aaa;
+        }
+
+        .past-section h2::before {
+            content: "📁";
+            font-size: 1.2em;
+        }
+
+        .past-section h2::after {
+            content: "▼";
+            margin-left: auto;
+            font-size: 0.8em;
+            transition: transform 0.3s;
+        }
+
+        .past-section.collapsed h2::after {
+            transform: rotate(-90deg);
+        }
+
+        .past-section.collapsed .past-content {
+            display: none !important;
+        }
+
+        .past-count {
+            font-size: 0.6em;
+            color: #666;
+            font-weight: normal;
+            letter-spacing: 1px;
+            background-color: rgba(102, 102, 102, 0.3);
+            padding: 2px 8px;
+            border-radius: 10px;
         }
 
         .refresh-button {
@@ -178,6 +249,50 @@
             transform: translateX(5px);
         }
 
+        .schedule-table tr.today-row td {
+            background-color: rgba(0, 255, 0, 0.05);
+            position: relative;
+        }
+
+        .schedule-table tr.today-row td:first-child::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background-color: #00ff00;
+        }
+
+        .past-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            opacity: 0.7;
+        }
+
+        .past-table th {
+            background-color: #333;
+            padding: 15px;
+            text-align: left;
+            font-size: 1.1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #888;
+            border-bottom: 2px solid #555;
+        }
+
+        .past-table td {
+            padding: 15px;
+            font-size: 1em;
+            border-bottom: 1px solid #444;
+            color: #aaa;
+        }
+
+        .past-table tr:hover {
+            background-color: rgba(100, 100, 100, 0.2);
+        }
+
         .status {
             padding: 8px 16px;
             border-radius: 20px;
@@ -211,6 +326,11 @@
             background-color: #4444ff;
             color: #fff;
             box-shadow: 0 0 10px rgba(68, 68, 255, 0.5);
+        }
+
+        .past-table .status {
+            opacity: 0.6;
+            box-shadow: none;
         }
 
         .location {
@@ -273,12 +393,14 @@
 
         /* Mobile responsiveness */
         @media (max-width: 768px) {
-            .schedule-table {
+            .schedule-table, .past-table {
                 font-size: 0.9em;
             }
             
             .schedule-table th,
-            .schedule-table td {
+            .schedule-table td,
+            .past-table th,
+            .past-table td {
                 padding: 10px 5px;
             }
             
@@ -295,6 +417,11 @@
                 padding: 10px 20px;
                 font-size: 1em;
             }
+            
+            .past-section {
+                margin: 10px;
+                padding: 15px;
+            }
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -308,6 +435,7 @@
 
     <div class="main-container">
         <div class="dashboard">
+            <h2>Current & Upcoming Appointments</h2>
             <div class="loading" id="loading">
                 <div class="spinner"></div> Loading appointments...
             </div>
@@ -341,7 +469,30 @@
                 </tbody>
             </table>
             <div class="no-data" id="noData" style="display: none;">
-                No appointments found in the spreadsheet.
+                No current appointments found.
+            </div>
+        </div>
+        
+        <div class="past-section collapsed" id="pastSection">
+            <h2>Past Meetings <span class="past-count" id="pastCount"></span></h2>
+            <div class="past-content">
+                <table class="past-table" id="pastTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Date & Time</th>
+                            <th>Location</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pastBody">
+                        <!-- Past meetings will be populated here -->
+                    </tbody>
+                </table>
+                <div class="no-data" id="noPastData" style="display: none;">
+                    No past meetings found.
+                </div>
             </div>
         </div>
     </div>
@@ -350,10 +501,14 @@
     <div class="sort-info" id="sortInfo">💡 Click any column header to sort</div>
 
     <script>
-        // Configuration - Your published CSV URL
+        // ===== CONFIGURATION =====
+        // Your published CSV URL from Google Sheets
         const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTrl2gZKGIyZcfKs9kLRzwfMBGywvJT-eyuJAlM0mcBabJT0BinOvmhx0V9xUrHoReYM7jMzAfgZ9EJ/pub?output=csv';
+        // =========================
         
         let appointments = [];
+        let currentAppointments = [];
+        let pastAppointments = [];
         let lastUpdate = null;
         let currentSort = { column: null, direction: 'asc' };
 
@@ -378,23 +533,114 @@
         }
 
         function parseDateTime(dateTimeStr) {
-            if (!dateTimeStr) return { date: '', time: '' };
+            if (!dateTimeStr || dateTimeStr.trim() === '') return { date: '', time: '' };
+            
+            // Clean up the input
+            dateTimeStr = dateTimeStr.trim();
             
             try {
-                // Handle various date formats
-                const dateObj = new Date(dateTimeStr);
-                if (isNaN(dateObj.getTime())) return { date: '', time: '' };
+                let dateObj;
+                let timeStr = '';
                 
+                // Log what we're trying to parse
+                console.log('Parsing date:', dateTimeStr);
+                
+                // Check if the string contains time indicators
+                const hasTime = /\d{1,2}:\d{2}/.test(dateTimeStr) || 
+                               /\d{1,2}\s*(am|pm|AM|PM)/i.test(dateTimeStr);
+                
+                // Try different date parsing strategies
+                
+                // Strategy 1: Direct parse (works for many formats)
+                dateObj = new Date(dateTimeStr);
+                
+                // Strategy 2: Handle specific formats
+                if (isNaN(dateObj.getTime())) {
+                    // Common Google Sheets date formats
+                    
+                    // Format: M/D/YYYY or MM/DD/YYYY
+                    let match = dateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                    if (match) {
+                        dateObj = new Date(match[3], parseInt(match[1]) - 1, match[2]);
+                    }
+                    
+                    // Format: M/D/YY or MM/DD/YY
+                    if (!match) {
+                        match = dateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
+                        if (match) {
+                            const year = parseInt(match[3]) + 2000;
+                            dateObj = new Date(year, parseInt(match[1]) - 1, match[2]);
+                        }
+                    }
+                    
+                    // Format: YYYY-MM-DD
+                    if (!match) {
+                        match = dateTimeStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+                        if (match) {
+                            dateObj = new Date(match[1], parseInt(match[2]) - 1, match[3]);
+                        }
+                    }
+                    
+                    // Format with time: M/D/YYYY H:MM AM/PM
+                    if (!match) {
+                        match = dateTimeStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+                        if (match) {
+                            let hours = parseInt(match[4]);
+                            const minutes = parseInt(match[5]);
+                            const ampm = match[6];
+                            
+                            if (ampm) {
+                                if (ampm.toUpperCase() === 'PM' && hours !== 12) hours += 12;
+                                if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+                            }
+                            
+                            dateObj = new Date(match[3], parseInt(match[1]) - 1, match[2], hours, minutes);
+                            timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                        }
+                    }
+                }
+                
+                // If still invalid, try one more time with a more flexible approach
+                if (isNaN(dateObj.getTime())) {
+                    // Remove any extra whitespace and try again
+                    const cleanedDate = dateTimeStr.replace(/\s+/g, ' ');
+                    dateObj = new Date(cleanedDate);
+                }
+                
+                // If still invalid, log and return empty
+                if (isNaN(dateObj.getTime())) {
+                    console.warn('Failed to parse date:', dateTimeStr);
+                    return { date: '', time: '' };
+                }
+                
+                // Format the date part
                 const date = dateObj.toISOString().split('T')[0];
-                const time = dateObj.toTimeString().slice(0, 5);
-                return { date, time };
+                
+                // Extract time if we haven't already and it exists
+                if (!timeStr && hasTime) {
+                    const hours = dateObj.getHours();
+                    const minutes = dateObj.getMinutes();
+                    if (hours !== 0 || minutes !== 0) {
+                        timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                    }
+                }
+                
+                console.log('Parsed successfully:', { date, time: timeStr });
+                return { date, time: timeStr };
             } catch (e) {
+                console.error('Error parsing date:', dateTimeStr, e);
                 return { date: '', time: '' };
             }
         }
 
-        function formatDateTime(date, time) {
-            if (!date) return 'TBD';
+        function formatDateTime(date, time, rawDate) {
+            if (!date) {
+                // If we couldn't parse the date but have raw data, show it
+                if (rawDate && rawDate.trim() !== '') {
+                    return rawDate + ' (unparsed)';
+                }
+                return 'TBD';
+            }
             try {
                 const dateObj = new Date(date + 'T' + (time || '00:00'));
                 const options = { 
@@ -406,7 +652,7 @@
                 };
                 return dateObj.toLocaleDateString('en-US', options);
             } catch (e) {
-                return 'TBD';
+                return rawDate || 'TBD';
             }
         }
 
@@ -429,6 +675,19 @@
             }
         }
 
+        function isPastMeeting(dateStr) {
+            if (!dateStr) return false;
+            
+            const meetingDate = new Date(dateStr);
+            if (isNaN(meetingDate.getTime())) return false;
+            
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            meetingDate.setHours(0, 0, 0, 0);
+            
+            return meetingDate < today;
+        }
+
         function sortTable(column) {
             // Hide sort info once user starts sorting
             document.getElementById('sortInfo').classList.remove('show');
@@ -449,7 +708,7 @@
             const arrow = document.getElementById(`sort-${column}`);
             arrow.classList.add('active', currentSort.direction);
             
-            renderTable();
+            renderTables();
         }
 
         function sortAppointments(appointments) {
@@ -537,37 +796,78 @@
                         results.data.forEach(row => {
                             // Debug: log first row to see all keys
                             if (appointments.length === 0) {
+                                console.log('=== COLUMN DETECTION DEBUG ===');
                                 console.log('First row keys:', Object.keys(row));
                                 console.log('First row data:', row);
+                                Object.keys(row).forEach(key => {
+                                    console.log(`Column "${key}" = "${row[key]}"`);
+                                });
+                                console.log('=============================');
                             }
                             
                             // More flexible column matching - check all possible variations
                             let name = '';
                             let status = '';
                             let scheduledDate = '';
+                            let scheduledTime = '';
                             let location = '';
                             let notes = '';
                             
-                            // Find name column
+                            // Find columns - try exact matches first, then fuzzy matches
                             for (const key of Object.keys(row)) {
                                 const lowerKey = key.toLowerCase().trim();
-                                if (lowerKey.includes('name') && !name) {
-                                    name = row[key] || '';
-                                } else if (lowerKey.includes('status') && !status) {
-                                    status = row[key] || '';
-                                } else if ((lowerKey.includes('date') || lowerKey.includes('scheduled')) && !scheduledDate) {
-                                    scheduledDate = row[key] || '';
-                                } else if (lowerKey.includes('location') && !location) {
-                                    location = row[key] || '';
-                                } else if (lowerKey.includes('note') && !notes) {
-                                    notes = row[key] || '';
+                                const value = row[key] || '';
+                                
+                                // Try exact matches first
+                                if (key === 'Name' || key === 'name') {
+                                    name = value;
+                                } else if (key === 'Status' || key === 'status') {
+                                    status = value;
+                                } else if (key === 'Scheduled Date' || key === 'scheduled date' || key === 'Date' || key === 'date') {
+                                    scheduledDate = value;
+                                } else if (key === 'Time' || key === 'time' || key === 'Scheduled Time' || key === 'scheduled time') {
+                                    scheduledTime = value;
+                                } else if (key === 'Location' || key === 'location') {
+                                    location = value;
+                                } else if (key === 'Notes' || key === 'notes') {
+                                    notes = value;
+                                }
+                            }
+                            
+                            // If exact matches didn't work, try fuzzy matches
+                            if (!name || !scheduledDate) {
+                                for (const key of Object.keys(row)) {
+                                    const lowerKey = key.toLowerCase().trim();
+                                    const value = row[key] || '';
+                                    
+                                    if (!name && lowerKey.includes('name')) {
+                                        name = value;
+                                    } else if (!status && lowerKey.includes('status')) {
+                                        status = value;
+                                    } else if (!scheduledDate && (lowerKey.includes('date') || lowerKey.includes('scheduled'))) {
+                                        scheduledDate = value;
+                                        console.log(`Found date in column "${key}": ${scheduledDate}`);
+                                    } else if (!scheduledTime && lowerKey.includes('time')) {
+                                        scheduledTime = value;
+                                        console.log(`Found time in column "${key}": ${scheduledTime}`);
+                                    } else if (!location && lowerKey.includes('location')) {
+                                        location = value;
+                                    } else if (!notes && lowerKey.includes('note')) {
+                                        notes = value;
+                                    }
                                 }
                             }
                             
                             // Skip if no name found
                             if (!name || !name.trim()) return;
                             
-                            const dateTime = parseDateTime(scheduledDate);
+                            // Combine date and time if they're in separate columns
+                            let fullDateTime = scheduledDate;
+                            if (scheduledTime && !scheduledDate.includes(scheduledTime)) {
+                                fullDateTime = `${scheduledDate} ${scheduledTime}`;
+                            }
+                            
+                            const dateTime = parseDateTime(fullDateTime);
                             
                             appointments.push({
                                 name: name.trim(),
@@ -575,27 +875,40 @@
                                 date: dateTime.date,
                                 time: dateTime.time,
                                 location: location.trim(),
-                                notes: notes.trim()
+                                notes: notes.trim(),
+                                rawDate: fullDateTime // Keep raw date for debugging
                             });
                         });
                         
                         console.log('Parsed appointments:', appointments); // Debug: see final data
                         
+                        // Separate current and past appointments
+                        currentAppointments = [];
+                        pastAppointments = [];
+                        
+                        appointments.forEach(apt => {
+                            if (isPastMeeting(apt.date)) {
+                                pastAppointments.push(apt);
+                            } else {
+                                currentAppointments.push(apt);
+                            }
+                        });
+                        
                         if (appointments.length === 0) {
                             console.log('No appointments found. Check if sheet has data and correct column names.');
-                            appointments = [{
-                                name: "No Appointments Found",
+                            currentAppointments = [{
+                                name: "Column Detection Issue",
                                 status: "pending",
                                 date: "",
                                 time: "",
-                                location: "Check sheet",
-                                notes: "Ensure sheet has: Name, Status, Scheduled Date, Location, Notes columns"
+                                location: "Check console",
+                                notes: "Open browser console (F12) to see detected columns. Expected: Name, Status, Date/Scheduled Date, Location, Notes"
                             }];
                         }
                         
                         lastUpdate = new Date();
                         updateSyncStatus(`Last synced: ${lastUpdate.toLocaleTimeString()}`);
-                        renderTable();
+                        renderTables();
                     },
                     error: function(error) {
                         console.error('Papa Parse error:', error);
@@ -608,7 +921,7 @@
                 updateSyncStatus(`Error: ${error.message}`, true);
                 
                 // Show more detailed error info
-                appointments = [
+                currentAppointments = [
                     {
                         name: "Connection Error",
                         status: "pending",
@@ -618,13 +931,14 @@
                         notes: "Upload to GitHub Pages for automatic sync, or use a local web server"
                     }
                 ];
-                renderTable();
+                renderTables();
             } finally {
                 refreshBtn.disabled = false;
             }
         }
 
-        function renderTable() {
+        function renderTables() {
+            // Render current appointments
             const tbody = document.getElementById('scheduleBody');
             const loading = document.getElementById('loading');
             const table = document.getElementById('scheduleTable');
@@ -634,33 +948,83 @@
             
             tbody.innerHTML = '';
 
-            if (appointments.length === 0) {
+            if (currentAppointments.length === 0) {
                 table.style.display = 'none';
                 noData.style.display = 'block';
-                return;
+            } else {
+                table.style.display = 'table';
+                noData.style.display = 'none';
+
+                // Apply sorting
+                const sortedAppointments = sortAppointments(currentAppointments);
+
+                sortedAppointments.forEach(apt => {
+                    const tr = document.createElement('tr');
+                    
+                    // Check if this appointment is today
+                    const today = new Date();
+                    const aptDate = apt.date ? new Date(apt.date) : null;
+                    if (aptDate && !isNaN(aptDate.getTime()) && aptDate.toDateString() === today.toDateString()) {
+                        tr.classList.add('today-row');
+                    }
+                    
+                    tr.innerHTML = `
+                        <td class="name">${apt.name}</td>
+                        <td><span class="status ${apt.status}">${apt.status.replace('-', ' ')}</span></td>
+                        <td class="time">${formatDateTime(apt.date, apt.time, apt.rawDate)}</td>
+                        <td class="location">${apt.location || 'TBD'}</td>
+                        <td>${apt.notes || '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                // Add update animation
+                tbody.classList.add('updating');
+                setTimeout(() => tbody.classList.remove('updating'), 1000);
             }
+            
+            // Render past appointments
+            renderPastTable();
+        }
 
-            table.style.display = 'table';
-            noData.style.display = 'none';
-
-            // Apply sorting
-            const sortedAppointments = sortAppointments(appointments);
-
-            sortedAppointments.forEach(apt => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="name">${apt.name}</td>
-                    <td><span class="status ${apt.status}">${apt.status.replace('-', ' ')}</span></td>
-                    <td class="time">${formatDateTime(apt.date, apt.time)}</td>
-                    <td class="location">${apt.location || 'TBD'}</td>
-                    <td>${apt.notes || '-'}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-
-            // Add update animation
-            tbody.classList.add('updating');
-            setTimeout(() => tbody.classList.remove('updating'), 1000);
+        function renderPastTable() {
+            const pastBody = document.getElementById('pastBody');
+            const pastTable = document.getElementById('pastTable');
+            const noPastData = document.getElementById('noPastData');
+            const pastCount = document.getElementById('pastCount');
+            
+            // Update count
+            pastCount.textContent = pastAppointments.length > 0 ? 
+                `${pastAppointments.length} meeting${pastAppointments.length !== 1 ? 's' : ''}` : '';
+            
+            pastBody.innerHTML = '';
+            
+            if (pastAppointments.length === 0) {
+                pastTable.style.display = 'none';
+                noPastData.style.display = 'block';
+            } else {
+                pastTable.style.display = 'table';
+                noPastData.style.display = 'none';
+                
+                // Sort past appointments by date (most recent first)
+                const sortedPast = [...pastAppointments].sort((a, b) => {
+                    const dateA = a.date ? new Date(a.date + 'T' + (a.time || '00:00')).getTime() : 0;
+                    const dateB = b.date ? new Date(b.date + 'T' + (b.time || '00:00')).getTime() : 0;
+                    return dateB - dateA; // Descending order
+                });
+                
+                sortedPast.forEach(apt => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${apt.name}</td>
+                        <td><span class="status ${apt.status}">${apt.status.replace('-', ' ')}</span></td>
+                        <td>${formatDateTime(apt.date, apt.time, apt.rawDate)}</td>
+                        <td>${apt.location || 'TBD'}</td>
+                        <td>${apt.notes || '-'}</td>
+                    `;
+                    pastBody.appendChild(tr);
+                });
+            }
         }
 
         // Initialize
@@ -689,6 +1053,14 @@
         table.addEventListener('mouseleave', () => {
             clearTimeout(hoverTimeout);
             sortInfo.classList.remove('show');
+        });
+
+        // Make past section collapsible
+        const pastSection = document.getElementById('pastSection');
+        const pastHeader = pastSection.querySelector('h2');
+        
+        pastHeader.addEventListener('click', () => {
+            pastSection.classList.toggle('collapsed');
         });
     </script>
 </body>
